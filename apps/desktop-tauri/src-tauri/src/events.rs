@@ -16,6 +16,7 @@ pub const UPDATE_STATE_CHANGED: &str = "update-state-changed";
 pub const LOCALE_CHANGED: &str = "locale-changed";
 pub const SETTINGS_CHANGED: &str = "settings-changed";
 pub const CODEX_ACCOUNTS_UPDATED: &str = "codex-accounts-updated";
+pub const DEEPSEEK_PRICING_CHANGED: &str = "codexbar:deepseek-pricing";
 
 // ── Payloads ─────────────────────────────────────────────────────────
 
@@ -98,4 +99,15 @@ pub fn emit_update_state_changed(app: &AppHandle, payload: &UpdateStatePayload) 
 /// do not share React state. Payload-less; listeners re-fetch the snapshot.
 pub fn emit_settings_changed(app: &AppHandle) {
     let _ = app.emit(SETTINGS_CHANGED, ());
+}
+
+/// Emit the current DeepSeek pricing status so every webview (main, settings,
+/// float-bar, detached flyout) can update without each one polling the
+/// backend independently. The Rust-side observer fires this on each
+/// pricing-period transition.
+pub fn emit_deepseek_pricing_changed(
+    app: &AppHandle,
+    payload: &crate::commands::DeepSeekPricingStatus,
+) {
+    let _ = app.emit(DEEPSEEK_PRICING_CHANGED, payload.clone());
 }

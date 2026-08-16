@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type {
   ProviderChartData,
   ProviderUsageSnapshot,
 } from "../types/bridge";
-import { getProviderChartData } from "../lib/tauri";
+import { getDeepSeekPricingStatus, getProviderChartData } from "../lib/tauri";
 import { useLocale } from "../hooks/useLocale";
 import { formatRelativeUpdated } from "../lib/relativeTime";
 import type { LocaleKey } from "../i18n/keys";
 import { providerSupportsChartData } from "../lib/providerCharts";
 import MenuCardDetails, { describeCard, type MetricEntry } from "./MenuCardDetails";
 import CodexAccountsMenu from "./CodexAccountsMenu";
-import { DEEPSEEK_PRICING_EVENT } from "../hooks/useDeepSeekPricingStatus";
-import { getDeepSeekPricingStatus } from "../lib/tauri";
 import type { DeepSeekPricingStatus } from "../types/bridge";
+
+/** Tauri event emitted by the Rust-side pricing observer on each transition. */
+const DEEPSEEK_PRICING_EVENT = "codexbar:deepseek-pricing";
 
 /** Small copy-to-clipboard button matching macOS CopyIconButton (doc.on.doc → checkmark). */
 function CopyIconButton({ text }: { text: string }) {
@@ -78,6 +80,23 @@ function localizeWindowLabel(
   return raw ?? "";
 }
 
+/** Exhaustive mapping of each pricing period to its locale key.
+ * Adding a new variant to `DeepSeekPricingPeriod` forces a compile error
+ * here instead of silently falling back to "standard". */
+function pricingPeriodLabel(
+  period: DeepSeekPricingStatus["period"],
+  t: (key: LocaleKey) => string,
+): string {
+  switch (period) {
+    case "standard":
+      return t("DeepSeekPricingStandard");
+    case "peak":
+      return t("DeepSeekPricingPeak");
+    case "offPeak":
+      return t("DeepSeekPricingOffPeak");
+  }
+}
+
 function displayPlanName(
   planName: string | null,
   t: (key: LocaleKey) => string,
@@ -124,11 +143,19 @@ export default function MenuCard({
 
   useEffect(() => {
     if (provider.providerId !== "deepseek") return;
-    const onPricing = (event: Event) =>
-      setPricingStatus((event as CustomEvent<DeepSeekPricingStatus>).detail);
-    window.addEventListener(DEEPSEEK_PRICING_EVENT, onPricing);
+    let unlisten: (() => void) | null = null;
+    // Single initial fetch so the card shows status before the first
+    // observer event arrives; all subsequent updates come from the
+    // Rust-owned pricing observer via the typed Tauri event.
     void getDeepSeekPricingStatus().then(setPricingStatus).catch(() => {});
-    return () => window.removeEventListener(DEEPSEEK_PRICING_EVENT, onPricing);
+    void listen<DeepSeekPricingStatus>(DEEPSEEK_PRICING_EVENT, (event) => {
+      setPricingStatus(event.payload);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
   }, [provider.providerId]);
 
   useEffect(() => {
@@ -268,13 +295,7 @@ export default function MenuCard({
           aria-label={t("DeepSeekPricingTitle")}
         >
           <strong>
-            {t("DeepSeekPricingTitle")}: {t(
-              pricingStatus.period === "peak"
-                ? "DeepSeekPricingPeak"
-                : pricingStatus.period === "offPeak"
-                  ? "DeepSeekPricingOffPeak"
-                  : "DeepSeekPricingStandard",
-            )}
+            {t("DeepSeekPricingTitle")}: {pricingPeriodLabel(pricingStatus.period, t)}
           </strong>
           <span>
             {t("DeepSeekPricingCurrent")} {pricingStatus.currentLocalTime}

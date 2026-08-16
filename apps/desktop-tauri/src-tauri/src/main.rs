@@ -9,6 +9,7 @@ mod events;
 mod floatbar;
 mod geometry_store;
 mod powertoys;
+mod pricing_observer;
 mod proof_harness;
 mod shell;
 mod shortcut_bridge;
@@ -237,6 +238,7 @@ fn main() {
             shortcut_bridge::register(app.handle());
             floatbar::install(app.handle());
             auto_refresh::install(app.handle().clone());
+            pricing_observer::install(app.handle().clone());
             if settings.powertoys_status_pipe_enabled {
                 powertoys::install(app.handle().clone());
             }

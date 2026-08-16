@@ -1,5 +1,6 @@
 //! DeepSeek peak/off-peak pricing schedule.
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use serde::Serialize;
 
 pub const EFFECTIVE_AT: DateTime<Utc> = DateTime::<Utc>::from_naive_utc_and_offset(
     NaiveDateTime::new(
@@ -9,7 +10,8 @@ pub const EFFECTIVE_AT: DateTime<Utc> = DateTime::<Utc>::from_naive_utc_and_offs
     Utc,
 );
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum PricingPeriod {
     Standard,
     Peak,
@@ -58,14 +60,23 @@ pub fn status_at(now: DateTime<Utc>) -> PricingScheduleStatus {
             };
         }
     }
-
-    // 00:00-01:00 and 10:00-24:00 are off-peak. Use the next day's 01:00
-    // as the transition so the reported instant always changes the period.
-    let next = DateTime::<Utc>::from_naive_utc_and_offset(
-        (now.date_naive() + chrono::Days::new(1))
+    // 00:00-01:00 and 10:00-24:00 are off-peak. The next transition is the
+    // upcoming 01:00 (the start of the peak window). Before 01:00 that is
+    // today's 01:00; from 10:00 onward it is tomorrow's 01:00.
+    let today_start = DateTime::<Utc>::from_naive_utc_and_offset(
+        now.date_naive()
             .and_time(NaiveTime::from_hms_opt(1, 0, 0).unwrap()),
         Utc,
     );
+    let next = if now < today_start {
+        today_start
+    } else {
+        DateTime::<Utc>::from_naive_utc_and_offset(
+            (now.date_naive() + chrono::Days::new(1))
+                .and_time(NaiveTime::from_hms_opt(1, 0, 0).unwrap()),
+            Utc,
+        )
+    };
     PricingScheduleStatus {
         period: PricingPeriod::OffPeak,
         next_transition: Some(next),
@@ -98,12 +109,29 @@ mod tests {
         assert_eq!(status_at(at(10, 0)).period, PricingPeriod::OffPeak);
     }
     #[test]
-    fn next_transition_is_returned() {
+    fn peak_transitions_returned() {
         assert_eq!(status_at(at(2, 0)).next_transition, Some(at(4, 0)));
         assert_eq!(status_at(at(5, 0)).next_transition, Some(at(6, 0)));
-        assert_eq!(
-            status_at(at(23, 59)).next_transition,
-            Some(at(1, 0) + chrono::Days::new(1))
-        );
+    }
+    #[test]
+    fn midnight_transition_is_today_not_tomorrow() {
+        // 00:30 UTC is off-peak; the next transition is today's 01:00,
+        // ~30 minutes away — not tomorrow's 01:00 (~24.5 hours away).
+        let s = status_at(at(0, 30));
+        assert_eq!(s.period, PricingPeriod::OffPeak);
+        let next = s.next_transition.expect("next transition");
+        assert_eq!(next, at(1, 0));
+        let delta = next - at(0, 30);
+        assert_eq!(delta.num_minutes(), 30);
+    }
+    #[test]
+    fn late_off_peak_transitions_to_tomorrow_peak() {
+        // 23:59 UTC is off-peak; the next transition is tomorrow's 01:00.
+        let s = status_at(at(23, 59));
+        assert_eq!(s.period, PricingPeriod::OffPeak);
+        let next = s.next_transition.expect("next transition");
+        assert_eq!(next, at(1, 0) + chrono::Days::new(1));
+        let delta = next - at(23, 59);
+        assert_eq!(delta.num_minutes(), 61);
     }
 }

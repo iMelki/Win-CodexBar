@@ -196,9 +196,9 @@ impl ProviderUsageSnapshot {
         });
 
         // Scope forecast history to the signed-in account so switching accounts on one
-        // provider does not blend burn samples across plans. Codex publishes no email or
-        // organization (ADR 0003 ambient/managed lanes), so its discriminator is the
-        // managed token-account id.
+        // provider does not blend burn samples across plans. The Codex provider now
+        // publishes account email (from auth.json) so its forecast history is keyed
+        // per account even though Codex is excluded from TokenAccountStore.
         let account_key = forecast_account_key(usage, token_account_id);
         let session_equivalent_forecast = session_equivalent_forecast_for(
             id,
@@ -312,40 +312,43 @@ impl ProviderUsageSnapshot {
     }
 }
 
-/// Account discriminator that forecast history is scoped to.
+/// Stable account discriminator shared by forecast history and quota
+/// notifications. Precedence: token account -> email -> organization.
+/// Empty/whitespace values fall through to the next tier.
 ///
-/// Deliberately mirrors `quota_notification_account_identity` precedence
-/// (token account -> email -> organization) so a single account is never seen as two
-/// different identities by the notification and forecast subsystems. Kept as a separate
-/// function because that one consumes an already-built `ProviderUsageSnapshot`, while the
-/// forecast needs the key *while* the snapshot is being built.
-///
-/// `providers::tests::forecast_account_key_matches_notification_identity` pins them
-/// together.
+/// Both subsystems must agree: if they drifted apart, one account would be seen
+/// as two identities and its burn history would be split, silently halving the
+/// sample count behind every forecast. `providers::tests::forecast_account_key_matches_notification_identity`
+/// pins them together.
+pub(super) fn account_identity_key(
+    token_account_id: Option<uuid::Uuid>,
+    email: Option<&str>,
+    organization: Option<&str>,
+) -> String {
+    if let Some(id) = token_account_id {
+        return format!("token-account:{}", id.as_hyphenated());
+    }
+    if let Some(email) = email.map(str::trim).filter(|s| !s.is_empty()) {
+        return email.to_ascii_lowercase();
+    }
+    if let Some(org) = organization.map(str::trim).filter(|s| !s.is_empty()) {
+        return format!("org:{}", org.to_ascii_lowercase());
+    }
+    String::new()
+}
+
+/// Account discriminator that forecast history is scoped to, derived from the
+/// fetch result's `UsageSnapshot` while the bridge snapshot is still being built.
 pub(super) fn forecast_account_key(
     usage: &codexbar::core::UsageSnapshot,
     token_account_id: Option<uuid::Uuid>,
 ) -> Option<String> {
-    if let Some(id) = token_account_id {
-        return Some(format!("token-account:{}", id.as_hyphenated()));
-    }
-    if let Some(email) = usage
-        .account_email
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        return Some(email.to_ascii_lowercase());
-    }
-    if let Some(org) = usage
-        .account_organization
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        return Some(format!("org:{}", org.to_ascii_lowercase()));
-    }
-    None
+    let key = account_identity_key(
+        token_account_id,
+        usage.account_email.as_deref(),
+        usage.account_organization.as_deref(),
+    );
+    if key.is_empty() { None } else { Some(key) }
 }
 
 fn session_equivalent_forecast_for(

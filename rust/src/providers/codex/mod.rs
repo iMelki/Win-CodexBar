@@ -62,7 +62,20 @@ impl Provider for CodexProvider {
         tracing::debug!("Fetching Codex usage via OAuth API");
 
         match self.api.fetch_usage().await {
-            Ok((usage, cost)) => {
+            Ok((mut usage, cost)) => {
+                // Publish account identity from the same auth.json the fetch
+                // reads so forecast history and quota notifications are scoped
+                // per account. Email first, then provider_account_id, then
+                // auth_subject — the stable identifiers from the JWT id_token.
+                if let Some(identity) = self.api.resolve_identity() {
+                    let account_key = identity
+                        .email
+                        .or(identity.provider_account_id)
+                        .or(identity.auth_subject);
+                    if let Some(key) = account_key {
+                        usage = usage.with_email(key);
+                    }
+                }
                 let mut result = ProviderFetchResult::new(usage, "oauth");
                 if let Some(c) = cost {
                     result = result.with_cost(c);

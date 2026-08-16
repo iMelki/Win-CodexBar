@@ -344,7 +344,10 @@ fn spawn_provider_refreshes(
             &inputs.token_accounts,
         );
         // Resolved here rather than inside the fetch: forecast history is keyed by
-        // account, and the managed-account id is the only discriminator Codex exposes.
+        // account. For token-account providers this is the managed-account id;
+        // Codex is excluded from TokenAccountStore so its token_account_id is
+        // always None here, and the forecast key falls through to the account
+        // email the Codex provider publishes from auth.json.
         let token_account_id = inputs
             .token_accounts
             .get(&id)
@@ -783,33 +786,20 @@ fn dispatch_quota_hooks(
 }
 
 /// Stable account discriminator for threshold/session toast dedupe.
-/// Prefer token-account id, then email, org, plan; empty for single-account lanes.
+///
+/// Delegates to the shared `account_identity_key` helper so the notification
+/// and forecast subsystems can never drift apart.
 fn quota_notification_account_identity(
     snapshot: &ProviderUsageSnapshot,
     token_account_id: Option<uuid::Uuid>,
 ) -> String {
-    if let Some(id) = token_account_id {
-        return format!("token-account:{}", id.as_hyphenated());
-    }
-    if let Some(email) = snapshot
-        .account_email
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        return email.to_ascii_lowercase();
-    }
-    if let Some(org) = snapshot
-        .account_organization
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        return format!("org:{}", org.to_ascii_lowercase());
-    }
     // Do not fall back to plan_name/login_method — those are display tiers and
     // flicker across refreshes, re-arming still-hot windows for a new identity.
-    String::new()
+    crate::commands::bridge::account_identity_key(
+        token_account_id,
+        snapshot.account_email.as_deref(),
+        snapshot.account_organization.as_deref(),
+    )
 }
 
 fn notify_predictive_pace(

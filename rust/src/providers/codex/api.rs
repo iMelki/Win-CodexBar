@@ -61,6 +61,18 @@ impl CodexApi {
         self.home_dir.join(".codex")
     }
 
+    /// Resolve the account identity from the same `CODEX_HOME`/`auth.json` the
+    /// fetch path uses, reusing `codex_accounts`' JWT parsing. Returns `None`
+    /// when auth.json is missing or unreadable — the fetch fails there too.
+    ///
+    /// Published on the `UsageSnapshot` so forecast history and quota
+    /// notifications are scoped per account. Without this, every Codex refresh
+    /// landed in a single shared history bucket and switching accounts blended
+    /// burn data — the exact bug PR #276 fixes.
+    pub fn resolve_identity(&self) -> Option<crate::codex_accounts::AuthBackedIdentity> {
+        crate::codex_accounts::load_identity(&self.codex_dir()).ok()
+    }
+
     /// Fetch usage information from Codex API
     /// Returns (UsageSnapshot, optional CostSnapshot)
     pub async fn fetch_usage(
@@ -1522,5 +1534,157 @@ mod tests {
         assert!(secondary.is_none());
         assert!(tertiary.is_none());
         assert_eq!(code_review.unwrap().window_minutes, Some(999));
+    }
+
+    // ── PR #276: Codex forecast identity from auth.json ──────────────────
+
+    /// Write an auth.json carrying a JWT id_token with the given email and
+    /// optional account_id, mirroring the real Codex CLI format.
+    fn write_auth_json(home: &std::path::Path, email: &str, account_id: Option<&str>) {
+        use base64::Engine;
+        let mut payload = serde_json::json!({
+            "email": email,
+            "sub": format!("auth0|{email}"),
+        });
+        if let Some(aid) = account_id {
+            payload["https://api.openai.com/auth"] = serde_json::json!({
+                "chatgpt_account_id": aid,
+            });
+        }
+        let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&payload).unwrap());
+        let auth = serde_json::json!({
+            "tokens": {
+                "access_token": format!("access-{email}"),
+                "refresh_token": format!("refresh-{email}"),
+                "id_token": format!("header.{encoded}.signature"),
+            },
+        });
+        std::fs::write(
+            home.join("auth.json"),
+            serde_json::to_vec_pretty(&auth).unwrap(),
+        )
+        .unwrap();
+    }
+
+    /// Two Codex accounts on one machine must resolve to two distinct identity
+    /// keys so their forecast history never blends.
+    ///
+    /// Regression for PR #276 review feedback: the ambient Codex provider
+    /// previously published no account identity, so every refresh landed in a
+    /// single shared history bucket. This test exercises the actual identity
+    /// resolution from auth.json (the same path the fetch uses) — not a
+    /// synthetic id injected into `from_fetch_result`.
+    #[test]
+    fn codex_resolve_identity_yields_distinct_keys_per_account() {
+        let home_a = tempfile::tempdir().unwrap();
+        let home_b = tempfile::tempdir().unwrap();
+        write_auth_json(home_a.path(), "alice@example.com", Some("acct-alice"));
+        write_auth_json(home_b.path(), "bob@example.com", Some("acct-bob"));
+
+        let api_a = CodexApi::new().with_codex_home(home_a.path());
+        let api_b = CodexApi::new().with_codex_home(home_b.path());
+
+        let id_a = api_a.resolve_identity().expect("alice identity");
+        let id_b = api_b.resolve_identity().expect("bob identity");
+
+        // Email is the primary discriminator.
+        assert_eq!(id_a.email.as_deref(), Some("alice@example.com"));
+        assert_eq!(id_b.email.as_deref(), Some("bob@example.com"));
+
+        // The account key precedence (email -> provider_account_id -> auth_subject)
+        // must produce different keys for different accounts.
+        let key_a = id_a
+            .email
+            .or(id_a.provider_account_id)
+            .or(id_a.auth_subject);
+        let key_b = id_b
+            .email
+            .or(id_b.provider_account_id)
+            .or(id_b.auth_subject);
+        assert_ne!(key_a, key_b, "two accounts must not share a forecast key");
+    }
+
+    /// When email is absent, the identity falls back to provider_account_id,
+    /// then auth_subject — all three tiers must be stable per account.
+    #[test]
+    fn codex_resolve_identity_falls_back_to_provider_account_id() {
+        let home_a = tempfile::tempdir().unwrap();
+        let home_b = tempfile::tempdir().unwrap();
+        // No email claim in the JWT; only chatgpt_account_id.
+        write_auth_json(home_a.path(), "", Some("acct-alpha"));
+        write_auth_json(home_b.path(), "", Some("acct-beta"));
+
+        let id_a = CodexApi::new()
+            .with_codex_home(home_a.path())
+            .resolve_identity()
+            .expect("alpha identity");
+        let id_b = CodexApi::new()
+            .with_codex_home(home_b.path())
+            .resolve_identity()
+            .expect("beta identity");
+
+        assert!(id_a.email.is_none(), "email should be absent");
+        assert!(id_b.email.is_none(), "email should be absent");
+        assert_eq!(id_a.provider_account_id.as_deref(), Some("acct-alpha"));
+        assert_eq!(id_b.provider_account_id.as_deref(), Some("acct-beta"));
+    }
+
+    /// Identity resolution returns None when auth.json is missing — the same
+    /// condition under which the fetch fails.
+    #[test]
+    fn codex_resolve_identity_none_when_auth_missing() {
+        let home = tempfile::tempdir().unwrap();
+        let api = CodexApi::new().with_codex_home(home.path());
+        assert!(api.resolve_identity().is_none());
+    }
+
+    /// End-to-end: two Codex accounts resolved from auth.json produce isolated
+    /// forecast histories via `record_provider_windows` + the global store.
+    ///
+    /// This proves the full chain: auth.json -> resolve_identity -> account key
+    /// -> record_provider_windows -> isolated ForecastScope. The existing
+    /// `history_is_isolated_per_account` test injected synthetic scopes
+    /// directly; this one exercises the actual identity resolution gap.
+    #[test]
+    fn codex_two_accounts_produce_isolated_forecast_histories() {
+        use crate::core::{ForecastScope, RateWindow, global_history_store};
+
+        let home_a = tempfile::tempdir().unwrap();
+        let home_b = tempfile::tempdir().unwrap();
+        write_auth_json(home_a.path(), "forecast-alice@example.com", Some("acct-fa"));
+        write_auth_json(home_b.path(), "forecast-bob@example.com", Some("acct-fb"));
+
+        let key_a = CodexApi::new()
+            .with_codex_home(home_a.path())
+            .resolve_identity()
+            .and_then(|i| i.email.or(i.provider_account_id).or(i.auth_subject))
+            .expect("alice key");
+        let key_b = CodexApi::new()
+            .with_codex_home(home_b.path())
+            .resolve_identity()
+            .and_then(|i| i.email.or(i.provider_account_id).or(i.auth_subject))
+            .expect("bob key");
+        assert_ne!(key_a, key_b);
+
+        // Record a window for alice only.
+        let now = chrono::Utc::now();
+        let session = RateWindow::with_details(
+            50.0,
+            Some(300),
+            Some(now + chrono::Duration::hours(5)),
+            None,
+        );
+        crate::core::record_provider_windows("codex", Some(&key_a), &session, None, now);
+
+        // Alice's scope has history; bob's does not.
+        let guard = global_history_store().lock().unwrap();
+        let alice_hist = guard.histories(&ForecastScope::new("codex", Some(&key_a)));
+        let bob_hist = guard.histories(&ForecastScope::new("codex", Some(&key_b)));
+        assert!(!alice_hist.is_empty(), "alice should have recorded history");
+        assert!(
+            bob_hist.is_empty(),
+            "bob should have no history — alice's burn leaked across accounts"
+        );
     }
 }

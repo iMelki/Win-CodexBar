@@ -199,3 +199,10 @@ More release automation notes live in [docs/release/ci-cd.md](docs/release/ci-cd
 ## License
 
 MIT, same as the original CodexBar.
+
+## Dated fleet plan and ledger
+
+- [First usable release and ordered next releases](docs/fleet-assessment-2026-10-23.md).
+- [Evidence ledger, explicit gaps and owners](docs/fleet-assessment-2026-10-23.ledger.json).
+
+These are planning documents; source/runtime acceptance and any pause/archive boundary remain separate.

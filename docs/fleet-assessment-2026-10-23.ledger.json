@@ -1,0 +1,178 @@
+{
+  "schema": "fleet.additional.plan-ledger.v1",
+  "repository": "iMelki/Win-CodexBar",
+  "date": "2026-10-23",
+  "documentState": "complete actionable plan/ledger specification; bounded underlying assessment",
+  "taskAuthority": "Existing GitHub issues and repository-local source/plan conventions. This is a dated derived plan, not a second maintained backlog.",
+  "identity": {
+    "repositoryId": "1346452318",
+    "visibility": "public",
+    "archived": false,
+    "defaultBranchAtRead": "main",
+    "originVerified": true,
+    "remoteIdentityVerified": true,
+    "localAliasAvailable": true,
+    "sourceCommitAtRead": "0d776135e9b49bbbb5419b91f6a2ad3c47a084d8",
+    "fixtureClassification": "No bounded evidence establishes a test fixture. Treat exact repository identity separately from stale aliases.",
+    "lifecycle": "Existing owner retains lifecycle decision."
+  },
+  "baseline": "Exact owned-fork origin verified. README describes existing Tauri/React/Rust app and installer/portable artifacts; its version/features are source documentation, not refreshed upstream release or current installed-state proof.",
+  "consumer": "A Windows operator viewing one enabled AI provider's usage in the existing tray app.",
+  "boundary": "Existing Windows/provider-state source and runtime owners retain custody. No provider login, cookie import, credential read, app restart, build, installation or upstream publication occurs.",
+  "sourceEvidence": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "328ac4424482c05f072ecac2689c80edfa71600c6ae559cba760b6d445d4873f",
+      "bytes": 14023,
+      "observation": "Exact local source bytes read; identity verified by origin, current source head observed independently. No current runtime qualification."
+    },
+    {
+      "path": "README.md",
+      "sha256": "5750629da6c7e6603e4377d6b5488721520239de6a38854c43629119c34849e0",
+      "bytes": 8930,
+      "observation": "Exact local source bytes read; identity verified by origin, current source head observed independently. No current runtime qualification."
+    },
+    {
+      "path": "Cargo.toml",
+      "sha256": "cf0217707d1ebbfea9ca19b6bf0c045fd05f6809abfe7411636273d3f30c5e11",
+      "bytes": 147,
+      "observation": "Exact local source bytes read; identity verified by origin, current source head observed independently. No current runtime qualification."
+    }
+  ],
+  "canonicalPlanHierarchy": [
+    "README.md",
+    "AGENTS.md",
+    "CONTEXT.md",
+    "VERSIONING.md",
+    "docs/PRIVACY.md",
+    "docs/WINDOWS_PROOF.md"
+  ],
+  "auditCoverage": {
+    "issueAndPrCensus": "not performed; exact population unknown",
+    "itemAssessment": "Only the explicit static/documentary findings below were qualified; no comprehensive historical issue/PR assessment claimed.",
+    "currentRuntime": "unverified and not executed",
+    "releasePublication": "not performed"
+  },
+  "releases": [
+    {
+      "id": "U0",
+      "name": "Qualify one truthful provider-usage tray journey",
+      "consumer": "A Windows operator viewing one enabled AI provider's usage in the existing tray app.",
+      "outcome": "The operator can open the tray and identify one enabled provider's current usage or an explicit stale/unavailable state.",
+      "minimumScope": "Existing Windows app, one selected provider/source and a read-only settings/refresh journey; no new provider or cookie extraction.",
+      "dependencies": [
+        "Existing fork/runtime owner; exact selected app/provider source and privacy-safe credentials handling."
+      ],
+      "acceptance": [
+        "Usage/identity/source belong to the chosen provider; empty/error/stale state never borrows another provider's account.",
+        "Known successful, expired/unavailable and partial-provider fixtures produce truthful bounded outcomes with no secret logs.",
+        "Exact source/build/installed native artifact matches actual tray/settings interaction; native geometry/theme/accessibility proof is separate from frontend tests."
+      ],
+      "sourceBuildAndSelection": "Existing Rust/Tauri/frontend checks and native owner route qualify an exact artifact; do not invent coverage floors or run the release installer.",
+      "rollback": "Retain prior immutable app/config selection and secure credential storage; restore only owned settings/artifact with readback.",
+      "ownerOrGap": "Existing repository/product/source and runtime custodians; current acknowledgement or lifecycle decision remains an explicit gap.",
+      "executionState": "planned; no tests/build/install/provider/runtime action executed"
+    },
+    {
+      "id": "U1",
+      "name": "Qualify a second provider and safe account/source switching",
+      "consumer": "A Windows operator viewing one enabled AI provider's usage in the existing tray app.",
+      "outcome": "The operator can switch selected sources/accounts without stale data or identity crossing providers.",
+      "minimumScope": "One additional existing provider and account switch, explicit refresh/error behavior and provider-local state.",
+      "dependencies": [
+        "U0"
+      ],
+      "acceptance": [
+        "ProviderA/B concurrent refresh and source changes preserve identity and result-generation boundaries.",
+        "Malformed/expired/unsupported source returns a clear outcome; diagnostics stay value-free.",
+        "Tray/float-bar/settings native interactions on the exact candidate and regression of U0 are observed."
+      ],
+      "sourceBuildAndSelection": "Existing provider-state owner and reviewed UI primitives; ordinary Rust/Tauri/frontend tests plus native proof after separately approved selection.",
+      "rollback": "Restore previous provider/source setting and immutable artifact without deleting credentials or unrelated account state.",
+      "ownerOrGap": "Existing repository/product/source and runtime custodians; current acknowledgement or lifecycle decision remains an explicit gap.",
+      "executionState": "planned; no tests/build/install/provider/runtime action executed"
+    },
+    {
+      "id": "U2",
+      "name": "Qualify controlled update and installed CLI integration",
+      "consumer": "A Windows operator viewing one enabled AI provider's usage in the existing tray app.",
+      "outcome": "The operator can upgrade the chosen app/CLI and use one local read-only consumer with verified rollback.",
+      "minimumScope": "Exact installer/portable checksum and existing local CLI contract; no upstream release, global distribution or broad provider activation.",
+      "dependencies": [
+        "U1"
+      ],
+      "acceptance": [
+        "Artifact identity/checksum and exact app/CLI selection match the accepted fork/upstream decision.",
+        "Install/upgrade/uninstall and one local consumer preserve settings and truthful provider states.",
+        "Rollback restores exact prior binding/configuration; cookie import remains opt-in and no source listing proves successful delivery."
+      ],
+      "sourceBuildAndSelection": "Existing release/runtime owner applies the actual supported packaging/versioning policy; source documentation alone is not current release evidence.",
+      "rollback": "Retain the previous immutable package/config backup and prove restoration of exact selected app/CLI behavior.",
+      "ownerOrGap": "Existing repository/product/source and runtime custodians; current acknowledgement or lifecycle decision remains an explicit gap.",
+      "executionState": "planned; no tests/build/install/provider/runtime action executed"
+    }
+  ],
+  "findings": [
+    {
+      "id": "Win-CodexBar:fork-identity",
+      "kind": "bounded-static-documentary-finding",
+      "disposition": "Owned fork remote is distinct from the upstream distribution documented by README.",
+      "nextAction": "Bind the accepted fork/upstream artifact and actual installed selection before relying on a version claim.",
+      "priority": 1,
+      "ownerOrGap": "Existing repository/plan custodian; no duplicate author appointed.",
+      "evidence": [
+        "AGENTS.md",
+        "README.md",
+        "Cargo.toml"
+      ],
+      "state": "documentary finding; current product/runtime outcome unverified"
+    },
+    {
+      "id": "Win-CodexBar:provider-silo",
+      "kind": "bounded-static-documentary-finding",
+      "disposition": "Repository instructions require provider identity/plan/email state to stay siloed and diagnostics to exclude secret values.",
+      "nextAction": "First release qualifies one provider's correct/stale/error display without using another provider's identity.",
+      "priority": 2,
+      "ownerOrGap": "Existing repository/plan custodian; no duplicate author appointed.",
+      "evidence": [
+        "AGENTS.md",
+        "README.md",
+        "Cargo.toml"
+      ],
+      "state": "documentary finding; current product/runtime outcome unverified"
+    },
+    {
+      "id": "Win-CodexBar:native-proof",
+      "kind": "bounded-static-documentary-finding",
+      "disposition": "Repository says unit/local checks do not prove tray, settings, theme or WebView behavior.",
+      "nextAction": "Existing owner supplies exact native Windows evidence for any later UI-affecting change; no native action from this plan.",
+      "priority": 3,
+      "ownerOrGap": "Existing repository/plan custodian; no duplicate author appointed.",
+      "evidence": [
+        "AGENTS.md",
+        "README.md",
+        "Cargo.toml"
+      ],
+      "state": "documentary finding; current product/runtime outcome unverified"
+    }
+  ],
+  "missingEvidenceRequests": [
+    {
+      "id": "Win-CodexBar:original-assessment",
+      "requested": "Recover any original per-item assessment, exact issue/PR population and current accepted owner/custody receipts.",
+      "action": "Use existing custodian and saved reports; no whole-repository census repeated by this pass.",
+      "completion": "Exact evidence joined by identity, or explicit unknown/unavailable scope remains accepted."
+    },
+    {
+      "id": "Win-CodexBar:source-destination",
+      "requested": "Qualify actual documentation destination heads, preimages and existing writer release before publication.",
+      "action": "Existing publisher maps requested dev/main aliases to real repository policy; preserve current authors and dirty work.",
+      "completion": "Exact accepted destination and saved full-file/commit readback."
+    }
+  ],
+  "publication": {
+    "state": "private prepared only",
+    "allowedPayload": "Only explicit files/ documents plus reviewed documentation patch; private identity/source/approval receipts excluded.",
+    "gate": "Existing publisher qualifies destination mapping, preimages, ordinary checks and full publication metadata/privacy."
+  }
+}

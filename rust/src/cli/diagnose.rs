@@ -372,20 +372,39 @@ fn error_category(err: &ProviderError) -> &'static str {
     match err {
         ProviderError::AuthRequired
         | ProviderError::OAuth(_)
+        | ProviderError::OAuthExpired(_)
         | ProviderError::OAuthRevoked(_)
         | ProviderError::NoCookies => "auth",
         ProviderError::Network(_) | ProviderError::Timeout => "network",
         ProviderError::NotInstalled(_) | ProviderError::UnsupportedSource(_) => "config",
         ProviderError::Parse(_) => "parse",
+        // The aggregate used to be `Other`, whose text carries rate-limit
+        // failures from any source, so keep that mapping ahead of the state.
+        ProviderError::AllSourcesFailed { message, state } => {
+            if is_rate_limit_message(message) {
+                "api"
+            } else {
+                match state {
+                    crate::core::ProviderStateKind::NeedsAuthentication
+                    | crate::core::ProviderStateKind::ExpiredSession => "auth",
+                    crate::core::ProviderStateKind::LocalRuntimeOffline => "config",
+                    _ => "unknown",
+                }
+            }
+        }
         ProviderError::Other(message) => {
-            let lower = message.to_lowercase();
-            if lower.contains("rate limit") || lower.contains("429") {
+            if is_rate_limit_message(message) {
                 "api"
             } else {
                 "unknown"
             }
         }
     }
+}
+
+fn is_rate_limit_message(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("rate limit") || lower.contains("429")
 }
 
 fn safe_error_message(err: &ProviderError) -> String {
@@ -408,6 +427,47 @@ mod tests {
         assert_eq!(source_mode_name(SourceMode::OAuth), "oauth");
         assert_eq!(source_mode_name(SourceMode::Web), "web");
         assert_eq!(source_mode_name(SourceMode::Cli), "cli");
+    }
+
+    #[test]
+    fn aggregate_rate_limit_failure_keeps_api_category() {
+        use crate::core::ProviderStateKind;
+
+        let aggregate = |message: &str, state| ProviderError::AllSourcesFailed {
+            message: message.to_string(),
+            state,
+        };
+
+        // Rate limits win over the state, as they did when the aggregate was `Other`.
+        assert_eq!(
+            error_category(&aggregate(
+                "Claude usage failed from all configured sources. OAuth: HTTP 429",
+                ProviderStateKind::Unknown
+            )),
+            "api"
+        );
+        assert_eq!(
+            error_category(&aggregate(
+                "Rate limit exceeded",
+                ProviderStateKind::NeedsAuthentication
+            )),
+            "api"
+        );
+        assert_eq!(
+            error_category(&aggregate("all failed", ProviderStateKind::ExpiredSession)),
+            "auth"
+        );
+        assert_eq!(
+            error_category(&aggregate(
+                "all failed",
+                ProviderStateKind::LocalRuntimeOffline
+            )),
+            "config"
+        );
+        assert_eq!(
+            error_category(&aggregate("all failed", ProviderStateKind::Unknown)),
+            "unknown"
+        );
     }
 
     #[test]

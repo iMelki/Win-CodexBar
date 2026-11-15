@@ -324,6 +324,13 @@ pub fn parse_seed_usage_snapshot(json: &str) -> Result<ProviderUsageSnapshot, St
         snapshot.updated_at = chrono::Utc::now().to_rfc3339();
     }
 
+    // A missing errorState means "no error" (see `default_error_state`); a
+    // seed that carries an error message without a state is a problem of
+    // unknown kind rather than a healthy snapshot.
+    if snapshot.error.is_some() && !snapshot.error_state.is_problem() {
+        snapshot.error_state = codexbar::core::ProviderStateKind::Unknown;
+    }
+
     Ok(snapshot)
 }
 
@@ -555,6 +562,27 @@ mod tests {
         assert_eq!(snapshot.display_name, "Codex");
         assert_eq!(snapshot.source_label, "seed");
         assert!(!snapshot.updated_at.is_empty());
+    }
+
+    #[test]
+    fn parse_seed_snapshot_without_error_state_is_ready() {
+        let json = r#"{"providerId": "codex", "primary": {"usedPercent": 10.0}}"#;
+        let snapshot = parse_seed_usage_snapshot(json).unwrap();
+        assert!(snapshot.error.is_none());
+        assert_eq!(
+            snapshot.error_state,
+            codexbar::core::ProviderStateKind::Ready
+        );
+    }
+
+    #[test]
+    fn parse_seed_snapshot_with_error_but_no_state_is_unknown() {
+        let json = r#"{"providerId": "codex", "primary": {"usedPercent": 10.0}, "error": "boom"}"#;
+        let snapshot = parse_seed_usage_snapshot(json).unwrap();
+        assert_eq!(
+            snapshot.error_state,
+            codexbar::core::ProviderStateKind::Unknown
+        );
     }
 
     #[test]

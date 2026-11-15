@@ -379,6 +379,7 @@ fn hook_refresh_failure_status(error: &ProviderError) -> String {
         ProviderError::AuthRequired
         | ProviderError::NoCookies
         | ProviderError::OAuth(_)
+        | ProviderError::OAuthExpired(_)
         | ProviderError::OAuthRevoked(_) => "auth_required".into(),
         ProviderError::Timeout => "timeout".into(),
         ProviderError::Network(err) => {
@@ -391,9 +392,10 @@ fn hook_refresh_failure_status(error: &ProviderError) -> String {
             }
         }
         ProviderError::NotInstalled(_) => "error".into(),
-        ProviderError::Parse(_) | ProviderError::UnsupportedSource(_) | ProviderError::Other(_) => {
-            "error".into()
-        }
+        ProviderError::Parse(_)
+        | ProviderError::UnsupportedSource(_)
+        | ProviderError::Other(_)
+        | ProviderError::AllSourcesFailed { .. } => "error".into(),
     }
 }
 

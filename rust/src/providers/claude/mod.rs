@@ -292,7 +292,7 @@ fn claude_cli_auth_error(lowered: &str) -> Option<ProviderError> {
         return Some(ProviderError::AuthRequired);
     }
     if lowered.contains("token expired") || lowered.contains("token_expired") {
-        return Some(ProviderError::OAuth(
+        return Some(ProviderError::OAuthExpired(
             "Token expired. Run `claude login` to refresh.".to_string(),
         ));
     }
@@ -434,6 +434,37 @@ impl Provider for ClaudeProvider {
 
     fn detect_version(&self) -> Option<String> {
         detect_claude_version()
+    }
+    /// Claude's CLI-presence probe (`resolve_claude_cli_path`) raises
+    /// `NotInstalled` when the `claude` binary itself is missing — an
+    /// installation gap, not a credential problem — so it surfaces as an
+    /// offline local runtime (matching the pre-backend classifier's
+    /// treatment of CLI-presence failures). Message-scoped so any future
+    /// credential-flavored `NotInstalled` keeps the default mapping.
+    fn error_state_kind(&self, error: &ProviderError) -> crate::core::ProviderStateKind {
+        claude_error_state_kind(error)
+    }
+}
+
+fn claude_error_state_kind(error: &ProviderError) -> crate::core::ProviderStateKind {
+    match error {
+        ProviderError::NotInstalled(msg) if msg.contains("CLI not found") => {
+            crate::core::ProviderStateKind::LocalRuntimeOffline
+        }
+        _ => error.state_kind(),
+    }
+}
+
+/// Rank for choosing which failure an aggregate reports: the state the user
+/// can act on first wins, and a generic failure never hides a typed one.
+fn claude_state_actionability(state: crate::core::ProviderStateKind) -> u8 {
+    use crate::core::ProviderStateKind as K;
+    match state {
+        K::ExpiredSession => 4,
+        K::NeedsAuthentication => 3,
+        K::LocalRuntimeOffline => 2,
+        K::Unknown => 1,
+        K::Ready => 0,
     }
 }
 
@@ -700,15 +731,21 @@ fn record_auto_source(
 }
 
 fn claude_auto_fetch_error(failures: Vec<(&'static str, ProviderError)>) -> ProviderError {
+    let state = failures
+        .iter()
+        .map(|(_, error)| claude_error_state_kind(error))
+        .max_by_key(|state| claude_state_actionability(*state))
+        .unwrap_or(crate::core::ProviderStateKind::Unknown);
     let summary = failures
         .into_iter()
         .map(|(source, error)| format!("{source}: {error}"))
         .collect::<Vec<_>>()
         .join("; ");
 
-    ProviderError::Other(format!(
-        "Claude usage failed from all configured sources. {summary}"
-    ))
+    ProviderError::AllSourcesFailed {
+        message: format!("Claude usage failed from all configured sources. {summary}"),
+        state,
+    }
 }
 
 fn should_fallback_from_claude_cli_error(error: &ProviderError) -> bool {
@@ -1419,6 +1456,72 @@ Resets Dec 24 at 3:59pm (Europe/Paris)
     }
 
     #[test]
+    fn auto_failure_with_missing_login_needs_authentication() {
+        let err = claude_auto_fetch_error(vec![
+            (
+                "OAuth",
+                ProviderError::OAuth("Claude OAuth credentials not found".to_string()),
+            ),
+            ("Web", ProviderError::NoCookies),
+            (
+                "CLI",
+                ProviderError::NotInstalled("Claude CLI not found. Install it.".to_string()),
+            ),
+        ]);
+
+        assert_eq!(
+            ClaudeProvider::new().error_state_kind(&err),
+            crate::core::ProviderStateKind::NeedsAuthentication
+        );
+    }
+
+    #[test]
+    fn auto_failure_with_expired_token_is_expired_session() {
+        let err = claude_auto_fetch_error(vec![
+            ("Web", ProviderError::NoCookies),
+            (
+                "OAuth",
+                ProviderError::OAuthExpired("Token expired".to_string()),
+            ),
+            ("CLI", ProviderError::Parse("Empty output".to_string())),
+        ]);
+
+        assert_eq!(
+            ClaudeProvider::new().error_state_kind(&err),
+            crate::core::ProviderStateKind::ExpiredSession
+        );
+    }
+
+    #[test]
+    fn auto_failure_with_only_cli_missing_is_runtime_offline() {
+        let err = claude_auto_fetch_error(vec![
+            ("Web", ProviderError::Timeout),
+            (
+                "CLI",
+                ProviderError::NotInstalled("Claude CLI not found. Install it.".to_string()),
+            ),
+        ]);
+
+        assert_eq!(
+            ClaudeProvider::new().error_state_kind(&err),
+            crate::core::ProviderStateKind::LocalRuntimeOffline
+        );
+    }
+
+    #[test]
+    fn auto_failure_without_typed_signal_stays_unknown() {
+        let err = claude_auto_fetch_error(vec![
+            ("Web", ProviderError::Timeout),
+            ("CLI", ProviderError::Parse("Empty output".to_string())),
+        ]);
+
+        assert_eq!(
+            ClaudeProvider::new().error_state_kind(&err),
+            crate::core::ProviderStateKind::Unknown
+        );
+    }
+
+    #[test]
     fn rejects_claude_2_1_non_interactive_slash_response() {
         let provider = ClaudeProvider::new();
         let output = r#"
@@ -1519,5 +1622,19 @@ Active days: 2/10              Longest streak: 1 day
         let cached = cached_cli_result().expect("cached result within TTL");
         assert!((cached.usage.primary.used_percent - 42.0).abs() < 0.01);
         assert_eq!(cached.source_label, "cli");
+    }
+    #[test]
+    fn cli_presence_maps_to_local_runtime_offline() {
+        assert_eq!(
+            ClaudeProvider::new().error_state_kind(&ProviderError::NotInstalled(
+                "Claude CLI not found. Install from https://docs.claude.ai/claude-code".to_string(),
+            )),
+            crate::core::ProviderStateKind::LocalRuntimeOffline
+        );
+        // Other error kinds keep their default classification.
+        assert_eq!(
+            ClaudeProvider::new().error_state_kind(&ProviderError::AuthRequired),
+            crate::core::ProviderStateKind::NeedsAuthentication
+        );
     }
 }

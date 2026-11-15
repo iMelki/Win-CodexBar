@@ -153,7 +153,7 @@ where
         }
         Err(ConfigFileError::Parse(e)) => {
             println!("INVALID");
-            report.error(format!("{label}: {e}"));
+            report.error(format!("{label}: {}", parse_error_summary(&e)));
         }
     }
 
@@ -170,6 +170,24 @@ where
     serde_json::from_str::<T>(&content)
         .map(|_| ())
         .map_err(ConfigFileError::Parse)
+}
+
+/// Describe a parse failure by class and position only. serde_json's own text
+/// quotes the offending value, and these files hold cookies and tokens.
+fn parse_error_summary(error: &serde_json::Error) -> String {
+    use serde_json::error::Category;
+
+    let class = match error.classify() {
+        Category::Io => "read",
+        Category::Syntax => "syntax",
+        Category::Data => "data",
+        Category::Eof => "unexpected end of input",
+    };
+    format!(
+        "invalid JSON ({class} error at line {} column {})",
+        error.line(),
+        error.column()
+    )
 }
 
 enum ConfigFileError {
@@ -478,7 +496,10 @@ async fn show_paths() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ConfigFileError, read_json_config, sanitize_settings_for_dump};
+    use super::{
+        ConfigFileError, ValidationReport, read_json_config, sanitize_settings_for_dump,
+        validate_optional_json_file,
+    };
     #[cfg(windows)]
     use crate::secure_file;
     use crate::settings::ManualCookies;
@@ -520,6 +541,35 @@ mod tests {
         let message = error.to_string();
         assert!(message.contains("unsupported secure file protection"));
         assert!(!message.contains(payload));
+    }
+
+    #[test]
+    fn malformed_cookie_store_error_never_contains_cookie_values() {
+        let dir = tempfile::tempdir().expect("create temporary directory");
+        let path = dir.path().join("manual_cookies.json");
+        // serde_json quotes the offending value in its own error text.
+        let malformed = [
+            r#"{"cookies":{"openai":"session=SECRETVALUE123; other=x"}}"#,
+            r#"{"cookies":"SECRETVALUE123"}"#,
+            r#"{"cookies":{"openai":{"cookie_header":"SECRETVALUE123","saved_at":5}}}"#,
+        ];
+
+        for content in malformed {
+            std::fs::write(&path, content).expect("write malformed cookie store");
+            let mut report = ValidationReport::default();
+
+            assert!(validate_optional_json_file::<ManualCookies>(
+                &path,
+                "manual_cookies.json",
+                &mut report
+            ));
+
+            assert_eq!(report.errors.len(), 1, "{content}");
+            let message = &report.errors[0];
+            assert!(message.starts_with("manual_cookies.json: invalid JSON ("));
+            assert!(!message.contains("SECRETVALUE123"), "{message}");
+            assert!(message.contains("line 1 column"), "{message}");
+        }
     }
 
     #[test]

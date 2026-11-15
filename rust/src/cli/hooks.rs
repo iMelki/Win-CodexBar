@@ -392,9 +392,10 @@ fn hook_refresh_failure_status(error: &ProviderError) -> String {
             }
         }
         ProviderError::NotInstalled(_) => "error".into(),
-        ProviderError::Parse(_) | ProviderError::UnsupportedSource(_) | ProviderError::Other(_) => {
-            "error".into()
-        }
+        ProviderError::Parse(_)
+        | ProviderError::UnsupportedSource(_)
+        | ProviderError::Other(_)
+        | ProviderError::AllSourcesFailed { .. } => "error".into(),
     }
 }
 

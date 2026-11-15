@@ -71,6 +71,7 @@ impl ProviderError {
             | ProviderError::Parse(_)
             | ProviderError::UnsupportedSource(_)
             | ProviderError::Other(_) => ProviderStateKind::Unknown,
+            ProviderError::AllSourcesFailed { state, .. } => *state,
         }
     }
 }

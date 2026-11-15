@@ -579,6 +579,15 @@ pub enum ProviderError {
 
     #[error("{0}")]
     Other(String),
+
+    /// Every configured source failed. `state` is the most actionable state
+    /// among the individual failures, chosen while their typed errors still
+    /// exist, so the aggregate keeps "needs sign-in" and "session expired".
+    #[error("{message}")]
+    AllSourcesFailed {
+        message: String,
+        state: ProviderStateKind,
+    },
 }
 
 /// Context passed to provider fetch operations

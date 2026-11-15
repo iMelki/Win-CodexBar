@@ -218,8 +218,11 @@ fn default_source_label() -> String {
     "seed".to_string()
 }
 
+/// A snapshot without an `errorState` carries no error. serde cannot see the
+/// sibling `error` field, so `parse_seed_usage_snapshot` raises the state to
+/// `Unknown` when an error message arrives without one.
 fn default_error_state() -> codexbar::core::ProviderStateKind {
-    codexbar::core::ProviderStateKind::Unknown
+    codexbar::core::ProviderStateKind::Ready
 }
 
 /// Provider payload after applying settings-driven cross-surface presentation.

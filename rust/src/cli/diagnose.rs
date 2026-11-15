@@ -378,6 +378,12 @@ fn error_category(err: &ProviderError) -> &'static str {
         ProviderError::Network(_) | ProviderError::Timeout => "network",
         ProviderError::NotInstalled(_) | ProviderError::UnsupportedSource(_) => "config",
         ProviderError::Parse(_) => "parse",
+        ProviderError::AllSourcesFailed { state, .. } => match state {
+            crate::core::ProviderStateKind::NeedsAuthentication
+            | crate::core::ProviderStateKind::ExpiredSession => "auth",
+            crate::core::ProviderStateKind::LocalRuntimeOffline => "config",
+            _ => "unknown",
+        },
         ProviderError::Other(message) => {
             let lower = message.to_lowercase();
             if lower.contains("rate limit") || lower.contains("429") {
